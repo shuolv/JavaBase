@@ -1,0 +1,52 @@
+HashMap中比较核心的方法有：put(),get(),resize() 接下来我会详细分析代码中的细节。
+
+public V put(K key, V value) {                       //在HashMap中计算hash的方法为HashCode()的高16位不变，低16位是高16位与低16位相异或，
+        return putVal(hash(key), key, value, false, true);//这样做的理由：综合考虑速度，作用与质量
+    }
+static final int hash(Object key) {
+       int h;
+       return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);//HashCode无符号右移16位与原数相异或
+    }
+final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
+                   boolean evict) {
+        Node<K,V>[] tab; Node<K,V> p; int n, i;
+        if ((tab = table) == null || (n = tab.length) == 0)   //如果原表为空，则通过resize()新建一个表
+            n = (tab = resize()).length;
+        if ((p = tab[i = (n - 1) & hash]) == null)        //n表示当前表的长度，通过和hash相与得到在表中的index,如果该桶为空,
+            tab[i] = newNode(hash, key, value, null);     //则新建一个Node加入表中
+        else {                                            //如果该桶上不为空，则产生了hash冲突，先使用链表，后使用红黑树解决
+            Node<K,V> e; K k;
+            if (p.hash == hash &&
+                ((k = p.key) == key || (key != null && key.equals(k)))) //如果在该桶上hash相同，key值也相同，或者通过equals方法判断key值相同
+                e = p;                                                  //则将新加入的值覆盖原有的桶
+            else if (p instanceof TreeNode)                             //如果该桶已被红黑树管理，则将新节点加入到红黑树中
+                e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
+            else {                                                      //如果该桶被链表管理，则将新节点加入链表后面
+                for (int binCount = 0; ; ++binCount) {
+                    if ((e = p.next) == null) {
+                        p.next = newNode(hash, key, value, null);
+                        if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st  //如果链表的个数大于TREEIEY_THRESHOLD，则将链表转换为红黑树
+                            treeifyBin(tab, hash);
+                        break;
+                    }
+                    if (e.hash == hash &&                            //此判断与前面一个判断语句一样，如果在该桶上hash相同，
+                                                                    //key值也相同，或者通过equals方法判断key值相同，则将新加入的值覆盖原有的桶
+                        ((k = e.key) == key || (key != null && key.equals(k))))
+                        break;
+                    p = e;
+                }
+            }
+            if (e != null) { // existing mapping for key
+                V oldValue = e.value;
+                if (!onlyIfAbsent || oldValue == null)
+                    e.value = value;
+                afterNodeAccess(e);
+                return oldValue;
+            }
+        }
+        ++modCount;
+        if (++size > threshold)   //大于阈值则扩容
+            resize();
+        afterNodeInsertion(evict);
+        return null;
+    }
